@@ -1,0 +1,14 @@
+[project]
+name = "steamdeck_robotcontrol"
+version = "0.0.1"
+authors = [
+    { name = "Danya Generalov", email="danya@danya02.ru" },
+]
+description="Use a Steam Deck device to control a mobile robot platform"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
