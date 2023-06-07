@@ -1,3 +1,4 @@
+import asyncio
 import pygame
 
 from steamdeck_robotcontrol.screen import ScreenRunResult
@@ -35,3 +36,10 @@ class SampleScreen(screen.Screen):
             return screen.ExitProgram.value
         
         return screen.ContinueExecution.value
+    
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        return True
+    
+    async def should_render_frame(self) -> bool:
+        await asyncio.sleep(1)
+        return True

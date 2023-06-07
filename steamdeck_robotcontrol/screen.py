@@ -29,6 +29,23 @@ class Screen(ABC):
         """
         return ContinueExecution.value
 
+    @abstractmethod
+    async def should_render_frame(self) -> bool:
+        """
+        This coroutine returns True if it would like to update the contents of the screen.
+        It does not return, or returns False, if it does not want to do it on this loop.
+        """
+        return False
+
+    @abstractmethod
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        """
+        Accept a Pygame event and update internal state based on it.
+
+        Return True if we would like to `run_frame` now, or False otherwise.
+        The normal `should_render_frame` also applies, even if this returns True.
+        """
+
 
 @dataclass
 class ContinueExecution(ScreenRunResult):
