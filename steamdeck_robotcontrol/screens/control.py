@@ -7,8 +7,8 @@ from .. import screen
 
 class RobotControlScreen(screen.Screen):
     """Maintains a connection to the robot and sends it joystick positions."""
-    def __init__(self, display: pygame.Surface, server=''):
-        super().__init__(display)
+    def __init__(self, server=''):
+        super().__init__()
         self.server = server
         self.connection = None
         self.left_joystick_position = [0, 0]
@@ -17,23 +17,23 @@ class RobotControlScreen(screen.Screen):
         
 
 
-    def run_frame(self) -> ScreenRunResult:
-        super().run_frame()
-        self.display.fill('black')
+    def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
+        super().run_frame(display)
+        display.fill('black')
 
-        disp = self.display.get_rect()
+        disp = display.get_rect()
         left_joystick_circle = pygame.Rect(0, 0, 250, 250)
         left_joystick_circle.centery = disp.centery
         left_joystick_circle.centerx = int(disp.centerx / 2)
-        pygame.draw.circle(self.display, 'white', left_joystick_circle.center, left_joystick_circle.width/2, 4)
-        pygame.draw.line(self.display, 'white', (left_joystick_circle.centerx, left_joystick_circle.top), (left_joystick_circle.centerx, left_joystick_circle.bottom), 2)
-        pygame.draw.line(self.display, 'white', (left_joystick_circle.left, left_joystick_circle.centery), (left_joystick_circle.right, left_joystick_circle.centery), 2)
+        pygame.draw.circle(display, 'white', left_joystick_circle.center, left_joystick_circle.width/2, 4)
+        pygame.draw.line(display, 'white', (left_joystick_circle.centerx, left_joystick_circle.top), (left_joystick_circle.centerx, left_joystick_circle.bottom), 2)
+        pygame.draw.line(display, 'white', (left_joystick_circle.left, left_joystick_circle.centery), (left_joystick_circle.right, left_joystick_circle.centery), 2)
         
         right_joystick_circle = left_joystick_circle.copy()
         right_joystick_circle.centerx = int(3 * disp.centerx / 2)
-        pygame.draw.circle(self.display, 'white', right_joystick_circle.center, right_joystick_circle.width/2, 4)
-        pygame.draw.line(self.display, 'white', (right_joystick_circle.centerx, right_joystick_circle.top), (right_joystick_circle.centerx, right_joystick_circle.bottom), 2)
-        pygame.draw.line(self.display, 'white', (right_joystick_circle.left, right_joystick_circle.centery), (right_joystick_circle.right, right_joystick_circle.centery), 2)
+        pygame.draw.circle(display, 'white', right_joystick_circle.center, right_joystick_circle.width/2, 4)
+        pygame.draw.line(display, 'white', (right_joystick_circle.centerx, right_joystick_circle.top), (right_joystick_circle.centerx, right_joystick_circle.bottom), 2)
+        pygame.draw.line(display, 'white', (right_joystick_circle.left, right_joystick_circle.centery), (right_joystick_circle.right, right_joystick_circle.centery), 2)
 
         # Draw joystick positions
         left_joystick_pos = pygame.Rect(0,0,50,50)
@@ -44,8 +44,8 @@ class RobotControlScreen(screen.Screen):
         right_joystick_pos.centerx = right_joystick_circle.centerx + (self.right_joystick_position[0] * right_joystick_circle.width / 2)
         right_joystick_pos.centery = right_joystick_circle.centery + (self.right_joystick_position[1] * right_joystick_circle.height / 2)
 
-        pygame.draw.circle(self.display, (0, 128, 255), left_joystick_pos.center, left_joystick_pos.width/2)
-        pygame.draw.circle(self.display, 'red', right_joystick_pos.center, right_joystick_pos.width/2)
+        pygame.draw.circle(display, (0, 128, 255), left_joystick_pos.center, left_joystick_pos.width/2)
+        pygame.draw.circle(display, 'red', right_joystick_pos.center, right_joystick_pos.width/2)
 
         return ContinueExecution.value
 

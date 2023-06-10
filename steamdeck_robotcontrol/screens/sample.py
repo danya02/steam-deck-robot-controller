@@ -11,25 +11,24 @@ class SampleScreen(screen.Screen):
     This screen is a simple example for screens.
     """
 
-    def __init__(self, display):
+    def __init__(self):
         self.square = pygame.Rect(0, 0, 100, 100)
         self.going_down = True
         self.going_right = True
         self.frames_remaining = random.randint(500, 1000)
-        super().__init__(display)
 
-    def run_frame(self) -> ScreenRunResult:
-        super().run_frame()
-        self.display.fill("black")
-        self.display.fill("white", self.square)
+    def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
+        super().run_frame(display)
+        display.fill("black")
+        display.fill("white", self.square)
         self.square.centerx += 10 if self.going_right else -10
         self.square.centery += 10 if self.going_down else -10
-        if self.square.right > self.display.get_width():
+        if self.square.right > display.get_width():
             self.going_right = False
         elif self.square.left < 0:
             self.going_right = True
 
-        if self.square.bottom > self.display.get_height():
+        if self.square.bottom > display.get_height():
             self.going_down = False
         elif self.square.top < 0:
             self.going_down = True
@@ -53,18 +52,17 @@ class SampleScreen(screen.Screen):
 class EventLogScreen(screen.Screen):
     """This screen shows a list of events that have been passed to it."""
 
-    def __init__(self, display):
+    def __init__(self):
         self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
         self.log = []
-        super().__init__(display)
 
-    def run_frame(self) -> ScreenRunResult:
-        super().run_frame()
-        self.display.fill("black")
+    def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
+        super().run_frame(display)
+        display.fill("black")
         if not self.log:
             self.log.append("EMPTY")
 
-        srect = self.display.get_rect()
+        srect = display.get_rect()
         items_shown = []
         for v in reversed(self.log):
             line = self.font.render(v, True, "white")
@@ -80,7 +78,7 @@ class EventLogScreen(screen.Screen):
         self.log = self.log[-len(items_shown) :]
 
         for item, pos in items_shown:
-            self.display.blit(item, pos)
+            display.blit(item, pos)
 
         return screen.ContinueExecution.value
 

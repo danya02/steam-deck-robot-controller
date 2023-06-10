@@ -2,19 +2,17 @@ import threading
 import time
 import traceback
 import pygame
-from .screens import RobotControlScreen
+from .screens import *
 from .screen import *
-import asyncio
 
-#entrypoint = lambda disp: screens.TextInputScreen(disp, "Type whatever")
-#entrypoint = screens.SampleScreen
-entrypoint = RobotControlScreen
+#entrypoint = TextInputScreen("Type whatever")
+#entrypoint = SampleScreen()
+#entrypoint = RobotControlScreen()
+entrypoint = VerticalMenuScreen(list(enumerate(['This', 'That', 'The other thing'])), 0)
 
-display_to_transfer = None
-
-def run_render(screen_stack):
+def run_render(screen_stack, display):
     global current_screen
-    result = current_screen.run_frame()
+    result = current_screen.run_frame(display)
     pygame.display.flip()
 
     match result:
@@ -30,8 +28,8 @@ def run_render(screen_stack):
             if screen_stack:
                 current_screen = screen_stack.pop()
                 current_screen.receive_data(old_screen, data)
-                current_screen.run_frame()
-                run_render(screen_stack)
+                current_screen.run_frame(display)
+                run_render(screen_stack, display)
             else:
                 print(f"Screen {old_screen} returned without a caller on the stack with data: {data}")
                 raise SystemExit
@@ -42,10 +40,9 @@ def run_render(screen_stack):
 
 async def main():
     pygame.init()
-    is_running = True
     display = pygame.display.set_mode((1280, 800))
-    #if not pygame.display.is_fullscreen():
-    #    pygame.display.toggle_fullscreen()
+    if not pygame.display.is_fullscreen():
+        pygame.display.toggle_fullscreen()
 
     joysticks = [
         pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())
@@ -53,7 +50,7 @@ async def main():
 
     
     global current_screen
-    current_screen = entrypoint(display)
+    current_screen = entrypoint
     screen_stack = []
 
     clock = pygame.time.Clock()
@@ -66,7 +63,7 @@ async def main():
             should_render |= current_screen.should_render_frame()
 
             if should_render:
-                run_render(screen_stack)
+                run_render(screen_stack, display)
             
     except:
         traceback.print_exc()

@@ -19,17 +19,16 @@ class Screen(ABC):
     Is responsible for its own handling of the input events and for drawing to the screen.
     """
 
-    def __init__(self, display: pygame.Surface):
+    def __init__(self):
         """
         A reference to the current app display is needed.
         """
-        self.display = display
         self.last_rendered_at = 0
 
     @abstractmethod
-    def run_frame(self) -> ScreenRunResult:
+    def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
         """
-        Perform all the processing needed for the execution and rendering of this frame.
+        Perform all the processing needed for the execution and rendering of this frame, rendering it on the provided surface.
         Return a value indicating what should happen to this Screen on the next frame.
         """
         self.last_rendered_at = time.perf_counter()
