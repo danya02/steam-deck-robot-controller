@@ -5,14 +5,14 @@ import pygame
 from .screens import *
 from .screen import *
 
-#entrypoint = TextInputScreen("Type whatever")
-#entrypoint = SampleScreen()
+entrypoint = TextInputScreen("Type whatever", allow_cancelling=True)
 #entrypoint = RobotControlScreen()
 #entrypoint = VerticalMenuScreen(list(enumerate(['This', 'That', 'The other thing'])), 0)
-l = []
-for i in range(1000):
-    l.append( [i, str(i)] )
-entrypoint = VerticalMenuScreen(l)
+
+# l = []
+# for i in range(1000):
+#     l.append( [i, str(i)] )
+# entrypoint = VerticalMenuScreen(l)
 
 def run_render(screen_stack, display):
     global current_screen

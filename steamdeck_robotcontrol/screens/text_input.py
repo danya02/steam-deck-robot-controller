@@ -6,17 +6,29 @@ from .. import screen
 
 class TextInputScreen(screen.Screen):
     """Asks for some text from the user and returns it once Enter is hit."""
-    def __init__(self, prompt=''):
+    def __init__(self, prompt='', prefill='', allow_cancelling=False):
+        super().__init__()
         self.prompt = prompt
-        self.text = ''
+        self.text = prefill
         self.am_returning_now = False
+        self.allow_cancelling = allow_cancelling
+        pygame.font.init()
         self.font = pygame.font.SysFont(pygame.font.get_default_font(), 36)
+        self.did_flip_fullscreen = False
 
 
     def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
         super().run_frame(display)
         if self.am_returning_now:
+            if self.did_flip_fullscreen:
+                pygame.display.toggle_fullscreen()
             return ReturnToCaller(self.text)
+        
+        # On Steam Deck's desktop mode, the keyboard will not appear above fullscreen programs.
+        # So we need to make sure we aren't in full screen for this.
+        if pygame.display.is_fullscreen():
+            self.did_flip_fullscreen = True
+            pygame.display.toggle_fullscreen()
         
         display.fill('black')
         disp = display.get_rect()
@@ -39,9 +51,9 @@ class TextInputScreen(screen.Screen):
         display.blit(answer_line, answer_pos)
 
 
-        keyboard_line = self.font.render("To show keyboard, press STEAM+X buttons. Enter to confirm.", True, 'white')
+        keyboard_line = self.font.render(f"To show keyboard, press STEAM+X buttons. Enter to confirm{', B button to cancel' if self.allow_cancelling else ''}.", True, 'white')
         keyboard_pos = keyboard_line.get_rect()
-        keyboard_pos.bottom = disp.bottom
+        keyboard_pos.bottom = disp.bottom - 100  # This ensures it is below the keyboard, but above the taskbar (if there is one)
         display.blit(keyboard_line, keyboard_pos)
 
         return ContinueExecution.value
@@ -59,6 +71,13 @@ class TextInputScreen(screen.Screen):
                 self.text = self.text[:-1]
             elif event.key == pygame.K_RETURN:
                 self.am_returning_now = True
+                return True
         elif event.type == pygame.TEXTINPUT:
                self.text += event.text
-
+               return True
+        elif event.type == pygame.JOYBUTTONDOWN:
+            if self.allow_cancelling and event.button == 1:
+                self.text = None
+                self.am_returning_now = True
+                return True
+        return False
