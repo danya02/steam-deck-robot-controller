@@ -6,7 +6,8 @@ from steamdeck_robotcontrol.screen import ContinueExecution, ReturnToCaller, Scr
 from .. import screen
 
 TYPEMATIC_DELAY = 0.5  # When a direction is being held down, this is how long until typematic triggers
-TYPEMATIC_RATE = 0.2  # When typematic is triggered, this is how often it will tick
+TYPEMATIC_RATE = 0.1  # When typematic is triggered, this is how often it will tick
+TYPEMATIC_RATE_GAIN = 0.01  # When typematic is running, the delay will decrease by this factor every second.
 
 class VerticalMenuScreen(screen.Screen):
     """Shows several rows, one below the other, and returns which was selected."""
@@ -95,14 +96,15 @@ class VerticalMenuScreen(screen.Screen):
         # Typematic processing
         if self.typematic_direction:
             # If typematic is ready, check whether we passed the first threshold
-            if (time.perf_counter() - self.typematic_initial_press_at) > TYPEMATIC_DELAY:
+            running_for = time.perf_counter() - self.typematic_initial_press_at
+            if running_for > TYPEMATIC_DELAY:
                 # Now we need to start typing
                 if self.typematic_last_typed_at is None:
                     self.selected_item = (self.selected_item + self.typematic_direction) % len(self.items)
                     self.typematic_last_typed_at = time.perf_counter()
                     return True
                 else:
-                    if (time.perf_counter() - self.typematic_last_typed_at) > TYPEMATIC_RATE:
+                    if (time.perf_counter() - self.typematic_last_typed_at) > (TYPEMATIC_RATE - (TYPEMATIC_RATE_GAIN * running_for)):
                         self.selected_item = (self.selected_item + self.typematic_direction) % len(self.items)
                         self.typematic_last_typed_at = time.perf_counter()
                         return True
