@@ -69,6 +69,7 @@ class TextInputScreen(screen.Screen):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_BACKSPACE:
                 self.text = self.text[:-1]
+                return True
             elif event.key == pygame.K_RETURN:
                 self.am_returning_now = True
                 return True

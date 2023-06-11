@@ -12,4 +12,4 @@ upload-source:
 	rsync -av --delete . deck@steamdeck.local:/home/deck/devkit-game/RobotControl
 
 play-remote:
-	ssh deck@steamdeck.local -t "bash -c \"cd /home/deck/devkit-game/RobotControl; DISPLAY=:0 python ./run_app.py\""
+	ssh deck@steamdeck.local -t "bash -c \"cd /home/deck/devkit-game/RobotControl; DISPLAY=:0 python ./run_app.py -- devel\""
