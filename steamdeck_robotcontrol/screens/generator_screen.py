@@ -153,6 +153,7 @@ class RenderingGeneratorScreen(screen.Screen):
 
         # We first send the rendering opportunity data, and ignore the response.
         resp = self.generator.send( (RENDERING_OPPORTUNITY, self.queued_events) )
+        self.queued_events.clear()
 
         # Then, the generator will ignore the data, and we'll get a response.
         #resp = self.generator.send(DNC)

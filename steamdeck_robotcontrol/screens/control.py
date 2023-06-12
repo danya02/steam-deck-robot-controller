@@ -35,11 +35,13 @@ def robot_control_wrapper(server_addr):
         last_rendered_at = time.perf_counter()
 
         # Now I'm done rendering, and I'm going to start connecting.
-        connection_result = [None]
+        connection_result = [None, None]
         def connect():
-            socket = websockets.sync.client.connect(f"ws://{server_addr}")
-
-            connection_result[0] = socket  # Instead of return, must use this
+            try:
+                socket = websockets.sync.client.connect(f"ws://{server_addr}")
+                connection_result[0] = socket  # Instead of return, must use this
+            except Exception as e:
+                connection_result[1] = e
         connection_thread = threading.Thread(target=connect, daemon=True)
         connection_thread.start()
 
@@ -67,16 +69,63 @@ def robot_control_wrapper(server_addr):
                 # Otherwise, I don't care about this rendering opportunity.
                 opportunity, events = yield IGNORE_OPPORTUNITY
 
-        # With the connection established, we can make a RobotControlScreen out of it
-        # Yield it, and wait for a response
-        connected_once = True
-        resp = yield RobotControlScreen(connection_result[0])
-        # The response will tell us how the control session died.
-        # If it was a disconnection, we should try to reconnect.
-        if resp:
-            continue
+        # If the second value is there, then it means that there was an error connecting.
+        # Show the error, and give the option to retry
+        if connection_result[1]:
+            # This is something to render
+            display = yield WANT_TO_RENDER
+            display.fill('black')
+            errors = []
+            errors.append( font.render(f"Error while connecting to {server_addr}:", True, 'white') )
+            errors.append( font.render(repr(connection_result[1]), True, 'white') )
+            errors.append( font.render("Press A to retry or B to give up", True, 'white') )
+            rect = pygame.Rect(0,0,0,0)
+            for error in errors:
+                error_rect = error.get_rect()
+                error_rect.top = rect.bottom
+                error_rect.left = rect.left
+                display.blit(error, error_rect)
+                rect = error_rect
+            
+            # Now sit in a loop, accepting events until either button is pressed.
+            opportunity, events = yield ContinueExecution.value
+            last_rendered_at = time.perf_counter()
+            what_to_do = None
+            print(what_to_do)
+            while not what_to_do:
+                for e in events:
+                    if e.type == pygame.JOYBUTTONDOWN:
+                        if e.button == 0: what_to_do = 'retry'
+                        elif e.button == 1: what_to_do = 'abort'
+                
+                # Occasionally we need to take the render opportunity, but not render anything new.
+                # This is so that the display keeps up to date.
+                if time.perf_counter() - last_rendered_at > 1:
+                    display = yield WANT_TO_RENDER
+                    opportunity, events = yield ContinueExecution.value
+                else:
+                    opportunity, events = yield IGNORE_OPPORTUNITY
+
+            # We need to acquire some new events now, after the event with the button press.
+            opportunity, events = yield IGNORE_OPPORTUNITY
+            if what_to_do == 'retry':
+                what_to_do = None  # idk how exactly, but this does not get reset at the start of the loop
+                # Continue to the start of the loop implicitly
+            else: return None
+
+
+
         else:
-            return None
+            # With the connection established, we can make a RobotControlScreen out of it
+            # Yield it, and wait for a response
+            connected_once = True
+            reason = yield RobotControlScreen(connection_result[0])
+            # The response will tell us how the control session died.
+            # If it was a disconnection, we should try to reconnect.
+            if reason == 'conn':
+                continue
+            else:
+                return None
 
 
 
@@ -90,6 +139,8 @@ class RobotControlScreen(screen.Screen):
         self.right_joystick_position = [0, 0]
         self.events_without_render = 0
         self.closing = False
+        self.closing_reason = None
+
         self.latest_video_frame = pygame.Surface((800, 600))
         self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
         self.latest_video_frame.fill((255,0,255))
@@ -107,6 +158,7 @@ class RobotControlScreen(screen.Screen):
                 msg = self.socket.recv()
             except websockets.exceptions.ConnectionClosed:
                 self.closing = True
+                self.closing_reason = 'conn'
             if msg[0] == ord('F'):  # video frame
                 when_captured, byte_size = struct.unpack_from(">dI", buffer=msg, offset=1)
                 npimg = np.frombuffer(msg[13:], dtype=np.uint8)
@@ -126,7 +178,7 @@ class RobotControlScreen(screen.Screen):
         super().run_frame(display)
         display.fill('black')
         if self.closing:
-            return ReturnToCaller(True)
+            return ReturnToCaller(self.closing_reason)
 
         disp = display.get_rect()
 
@@ -140,25 +192,25 @@ class RobotControlScreen(screen.Screen):
             return ContinueExecution.value
 
 
-        left_joystick_circle = pygame.Rect(0, 0, 250, 250)
+        left_joystick_circle = pygame.Rect(0, 0, 100, 100)
         left_joystick_circle.centery = disp.centery
-        left_joystick_circle.centerx = int(disp.centerx / 2)
+        left_joystick_circle.left = disp.left + 25
         pygame.draw.circle(display, 'white', left_joystick_circle.center, left_joystick_circle.width/2, 4)
         pygame.draw.line(display, 'white', (left_joystick_circle.centerx, left_joystick_circle.top), (left_joystick_circle.centerx, left_joystick_circle.bottom), 2)
         pygame.draw.line(display, 'white', (left_joystick_circle.left, left_joystick_circle.centery), (left_joystick_circle.right, left_joystick_circle.centery), 2)
         
         right_joystick_circle = left_joystick_circle.copy()
-        right_joystick_circle.centerx = int(3 * disp.centerx / 2)
+        right_joystick_circle.right = disp.right - 25
         pygame.draw.circle(display, 'white', right_joystick_circle.center, right_joystick_circle.width/2, 4)
         pygame.draw.line(display, 'white', (right_joystick_circle.centerx, right_joystick_circle.top), (right_joystick_circle.centerx, right_joystick_circle.bottom), 2)
         pygame.draw.line(display, 'white', (right_joystick_circle.left, right_joystick_circle.centery), (right_joystick_circle.right, right_joystick_circle.centery), 2)
 
         # Draw joystick positions
-        left_joystick_pos = pygame.Rect(0,0,50,50)
+        left_joystick_pos = pygame.Rect(0,0,25,25)
         left_joystick_pos.centerx = left_joystick_circle.centerx + (self.left_joystick_position[0] * left_joystick_circle.width / 2)
         left_joystick_pos.centery = left_joystick_circle.centery + (self.left_joystick_position[1] * left_joystick_circle.height / 2)
 
-        right_joystick_pos = pygame.Rect(0,0,50,50)
+        right_joystick_pos = left_joystick_pos.copy()
         right_joystick_pos.centerx = right_joystick_circle.centerx + (self.right_joystick_position[0] * right_joystick_circle.width / 2)
         right_joystick_pos.centery = right_joystick_circle.centery + (self.right_joystick_position[1] * right_joystick_circle.height / 2)
 
@@ -220,6 +272,9 @@ class RobotControlScreen(screen.Screen):
             print(event.button)
             if event.button == 5:  # Right shoulder button
                 self.video_is_fullscreen = True
+            elif event.button == 6:  # Left menu button / start button
+                self.closing = True
+                self.closing_reason = 'user'
         elif event.type == pygame.JOYBUTTONUP:
             if event.button == 5:
                 self.video_is_fullscreen = False

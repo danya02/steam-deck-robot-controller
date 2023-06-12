@@ -39,6 +39,7 @@ def server_submenu(db, server_idx):
             ('conn', 'Connect to this server'),
             ('edit_name', f'Name: {server["name"]} (edit?)'),
             ('edit_addr', f'Address: {server["address"]} (edit?)'),
+            ('delete', 'Delete this server from the list'),
             ('back', 'Return to server list')
         ]
         response = yield VerticalMenuScreen(menu, default_item='conn', allow_cancelling=True)
@@ -48,9 +49,20 @@ def server_submenu(db, server_idx):
                 new_name = yield TextInputScreen("What should the new name for this server be?", server['name'], allow_cancelling=True)
                 if new_name:
                     server['name'] = new_name
-                    db['servers'][server_idx] = server
+                    servers = db['servers']
+                    servers[server_idx] = server
+                    db['servers'] = servers
             case 'edit_addr':
                 new_addr = yield TextInputScreen("What should the new address for this server be?", server['address'], allow_cancelling=True)
                 if new_addr:
                     server['address'] = new_addr
+                    servers = db['servers']
+                    servers[server_idx] = server
                     db['servers'][server_idx] = server
+            case 'delete':
+                resp = yield VerticalMenuScreen([(1, f'Really delete the server {server["name"]}'), (0, 'Do not')], default_item=0, allow_cancelling=True)
+                if resp:
+                    servers = db['servers']
+                    servers.pop(server_idx)
+                    db['servers'] = servers
+                    response = 'back'
