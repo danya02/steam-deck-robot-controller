@@ -1,3 +1,4 @@
+import struct
 import time
 from typing import Any
 import cv2
@@ -79,7 +80,6 @@ def robot_control_wrapper(server_addr):
 
 
 
-
 class RobotControlScreen(screen.Screen):
     """Maintains a connection to the robot and sends it joystick positions."""
     def __init__(self, websocket: websockets.sync.client.ClientConnection):
@@ -91,22 +91,33 @@ class RobotControlScreen(screen.Screen):
         self.events_without_render = 0
         self.closing = False
         self.latest_video_frame = pygame.Surface((800, 600))
+        self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
         self.latest_video_frame.fill((255,0,255))
+        self.latest_video_frame_latency = 0.0
+        self.latest_video_frame_presented = False
+        self.latest_video_frame_latencies = [0]
         self.video_recv_thread = threading.Thread(target=self.video_recv_thread_worker, daemon=True)
         self.video_recv_thread.start()
 
+        self.video_is_fullscreen = False
+
     def video_recv_thread_worker(self):
         while not self.closing:
-            print("Recving")
             try:
                 msg = self.socket.recv()
             except websockets.exceptions.ConnectionClosed:
                 self.closing = True
-            print("Recvd", len(msg))
-            npimg = np.fromstring(msg, dtype=np.uint8)
-            cv2img = cv2.imdecode(npimg, 1)
-            pygame_img = pygame.image.frombuffer(cv2img.tostring(), cv2img.shape[1::-1], "BGR")
-            self.latest_video_frame = pygame_img
+            if msg[0] == ord('F'):  # video frame
+                when_captured, byte_size = struct.unpack_from(">dI", buffer=msg, offset=1)
+                npimg = np.frombuffer(msg[13:], dtype=np.uint8)
+                cv2img = cv2.imdecode(npimg, 1)
+                pygame_img = pygame.image.frombuffer(cv2img.tostring(), cv2img.shape[1::-1], "BGR")
+                self.latest_video_frame = pygame_img
+                self.latest_video_frame_latency = time.time() - when_captured
+                self.latest_video_frame_latencies.append(self.latest_video_frame_latency)
+                while len(self.latest_video_frame_latencies) > 1280:  # Horizontal chart can fit 1280 pixels
+                    self.latest_video_frame_latencies.pop(0)
+                self.latest_video_frame_presented = True
         # Finalize by closing the socket
         self.socket.close()
 
@@ -118,6 +129,17 @@ class RobotControlScreen(screen.Screen):
             return ReturnToCaller(True)
 
         disp = display.get_rect()
+
+        if self.video_is_fullscreen:
+            img = self.latest_video_frame
+            factor = min(disp.width / img.get_width(), disp.height / img.get_height())
+            img = pygame.transform.scale_by(img, factor)
+            img_rect = img.get_rect()
+            img_rect.center = disp.center
+            display.blit(img, img_rect)
+            return ContinueExecution.value
+
+
         left_joystick_circle = pygame.Rect(0, 0, 250, 250)
         left_joystick_circle.centery = disp.centery
         left_joystick_circle.centerx = int(disp.centerx / 2)
@@ -147,6 +169,42 @@ class RobotControlScreen(screen.Screen):
         frame_rect = self.latest_video_frame.get_rect()
         frame_rect.center = disp.center
         display.blit(self.latest_video_frame, frame_rect)
+        self.latest_video_frame_presented = True
+
+        # In a corner of the screen, draw the delay between now and the latest frame
+        delay_text = self.font.render(f"Frame recv: {round(1000*self.latest_video_frame_latency, 2)} ms ago", True, 'white')
+        delay_rect = delay_text.get_rect()
+        display.blit(delay_text, delay_rect)
+
+        # On bottom of screen, draw a chart of the latencies
+        chart_rect = pygame.Rect(0, 0, disp.width, 200)
+        chart_rect.bottom = disp.bottom
+        lines = 10
+        min_value = min(self.latest_video_frame_latencies)
+        max_value = max(self.latest_video_frame_latencies)
+
+        # First draw the points (or bars?)
+        for idx, sample in enumerate(self.latest_video_frame_latencies):
+            height_frac = (sample - min_value) / ((max_value - min_value) or 1)
+            screen_position = chart_rect.bottom - int(chart_rect.height * height_frac)
+            if height_frac < 0.5:
+                color = (int(255 * height_frac), 255, 0)
+            else:
+                color = (255, int(255 * (1-height_frac)), 0)
+            #display.set_at((idx, screen_position), color)
+            pygame.draw.line(display, color, (idx, chart_rect.bottom), (idx, screen_position)) 
+        # Then, draw lines and their labels
+        for line in range(lines):
+            screen_position = chart_rect.bottom - int((chart_rect.bottom - chart_rect.top) * line / lines)
+            pygame.draw.line(display, 'grey', (chart_rect.left, screen_position), (chart_rect.right, screen_position), 2)
+            value = min_value + (max_value - min_value) * line / lines
+            value = str(round(value * 1000, 2)) + 'ms'
+            label = self.font.render(value, True, 'grey')
+            label_rect = label.get_rect()
+            label_rect.bottom = screen_position
+            label_rect.right = disp.right
+            display.blit(label, label_rect)
+
 
         return ContinueExecution.value
 
@@ -154,12 +212,17 @@ class RobotControlScreen(screen.Screen):
         return super().receive_data(returning_screen, returned_data)
 
     def should_render_frame(self) -> bool:
-        return self.time_since_last_rendered > 1
+        return self.time_since_last_rendered > 1 or not self.latest_video_frame_presented
     
     
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.JOYBUTTONDOWN:
-            self.closing = True
+            print(event.button)
+            if event.button == 5:  # Right shoulder button
+                self.video_is_fullscreen = True
+        elif event.type == pygame.JOYBUTTONUP:
+            if event.button == 5:
+                self.video_is_fullscreen = False
         if event.type == pygame.JOYAXISMOTION:
             match event.axis:
                 case 0:

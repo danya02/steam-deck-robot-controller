@@ -46,8 +46,8 @@ def run_render(screen_stack, display):
 def main():
     pygame.init()
     display = pygame.display.set_mode((1280, 800))
-    # if not pygame.display.is_fullscreen():
-    #     pygame.display.toggle_fullscreen()
+    if not pygame.display.is_fullscreen():
+        pygame.display.toggle_fullscreen()
 
     joysticks = [
         pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())
