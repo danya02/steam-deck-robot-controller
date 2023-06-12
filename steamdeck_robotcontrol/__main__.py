@@ -14,6 +14,7 @@ from .screen import *
 #     l.append( [i, str(i)] )
 # entrypoint = VerticalMenuScreen(l)
 entrypoint = GeneratorScreen(main_menu())
+# entrypoint = RenderingGeneratorScreen(robot_control_wrapper('1.2.3.4'))
 
 def run_render(screen_stack, display):
     global current_screen
@@ -45,8 +46,8 @@ def run_render(screen_stack, display):
 def main():
     pygame.init()
     display = pygame.display.set_mode((1280, 800))
-    if not pygame.display.is_fullscreen():
-        pygame.display.toggle_fullscreen()
+    # if not pygame.display.is_fullscreen():
+    #     pygame.display.toggle_fullscreen()
 
     joysticks = [
         pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())
@@ -62,6 +63,7 @@ def main():
         while True:
             clock.tick(60)
             should_render = False
+            # First handle_events, and only then should_render_frame!! Some screens accumulate events!
             for event in pygame.event.get():
                 should_render |= current_screen.handle_event(event)
             should_render |= current_screen.should_render_frame()

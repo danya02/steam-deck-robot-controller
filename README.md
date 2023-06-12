@@ -20,3 +20,8 @@ Then, use the [SteamOS Devkit tools](https://partner.steamgames.com/doc/steamdec
 Your title upload settings should look like this:
 
 ![Upload settings](images/upload_config.png)
+
+## Debugging
+
+The Python value of `Ellipsis` (`...`) is used as a sentinel for situations that seem impossible.
+If this appears in the logs, then it is necessary to consider the logic involved somewhere up the call stack.

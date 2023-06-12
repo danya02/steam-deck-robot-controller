@@ -2,6 +2,8 @@ from typing import Any
 import pygame
 from steamdeck_robotcontrol import persistence
 from steamdeck_robotcontrol.screen import CallAnother, ContinueExecution, ExitProgram, ScreenRunResult
+from steamdeck_robotcontrol.screens.control import robot_control_wrapper
+from steamdeck_robotcontrol.screens.generator_screen import RenderingGeneratorScreen
 from steamdeck_robotcontrol.screens.menu import VerticalMenuScreen
 from steamdeck_robotcontrol.screens.text_input import TextInputScreen
 from .. import screen
@@ -15,14 +17,14 @@ def main_menu():
         
         items.append( ('add', 'Add a new server...') )
         items.append( ('exit', 'Exit program') )
-        response = yield CallAnother(VerticalMenuScreen(items))
+        response = yield VerticalMenuScreen(items)
         match response:
             case 'exit':
                 return None
             case 'add':
-                name = yield CallAnother(TextInputScreen("What should the new server be called?", prefill="New Server", allow_cancelling=True))
+                name = yield TextInputScreen("What should the new server be called?", prefill="New Server", allow_cancelling=True)
                 if not name: continue
-                address = yield CallAnother(TextInputScreen(f'What should the address for server "{name}" be?', allow_cancelling=True))
+                address = yield TextInputScreen(f'What should the address for server "{name}" be?', allow_cancelling=True)
                 if not address: continue
                 db['servers'] += [{'name': name, 'address': address}]
             case idx:
@@ -39,16 +41,16 @@ def server_submenu(db, server_idx):
             ('edit_addr', f'Address: {server["address"]} (edit?)'),
             ('back', 'Return to server list')
         ]
-        response = yield CallAnother(VerticalMenuScreen(menu, default_item='conn', allow_cancelling=True))
+        response = yield VerticalMenuScreen(menu, default_item='conn', allow_cancelling=True)
         match response:
-            case 'conn': raise NotImplementedError
+            case 'conn': yield RenderingGeneratorScreen(robot_control_wrapper(server['address']))
             case 'edit_name':
-                new_name = yield CallAnother(TextInputScreen("What should the new name for this server be?", server['name'], allow_cancelling=True))
+                new_name = yield TextInputScreen("What should the new name for this server be?", server['name'], allow_cancelling=True)
                 if new_name:
                     server['name'] = new_name
                     db['servers'][server_idx] = server
             case 'edit_addr':
-                new_addr = yield CallAnother(TextInputScreen("What should the new address for this server be?", server['address'], allow_cancelling=True))
+                new_addr = yield TextInputScreen("What should the new address for this server be?", server['address'], allow_cancelling=True)
                 if new_addr:
                     server['address'] = new_addr
                     db['servers'][server_idx] = server
