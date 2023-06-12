@@ -1,11 +1,15 @@
 import time
 from typing import Any
+import cv2
+import numpy as np
 import pygame
 import threading
+import zmq
 
 from steamdeck_robotcontrol.screen import ContinueExecution, ReturnToCaller, ScreenRunResult
 from steamdeck_robotcontrol.screens.generator_screen import IGNORE_OPPORTUNITY, RENDERING_OPPORTUNITY, SUPPORTS_RENDERING, WANT_TO_RENDER
 from .. import screen
+
 
 def robot_control_wrapper(server_addr):
     """Generator-style wrapper responsible for (re)opening the connection."""
@@ -31,8 +35,12 @@ def robot_control_wrapper(server_addr):
         # Now I'm done rendering, and I'm going to start connecting.
         connection_result = [None]
         def connect():
-            time.sleep(10)  # TODO: connection code here
-            connection_result[0] = 'OK'  # Instead of return, must use this
+            ctx = zmq.Context.instance()
+            socket: zmq.Socket = ctx.socket(zmq.SUB)
+            socket.connect(f"tcp://{server_addr}")
+            socket.setsockopt_string(zmq.SUBSCRIBE, '')
+
+            connection_result[0] = socket  # Instead of return, must use this
         connection_thread = threading.Thread(target=connect, daemon=True)
         connection_thread.start()
 
@@ -63,7 +71,7 @@ def robot_control_wrapper(server_addr):
         # With the connection established, we can make a RobotControlScreen out of it
         # Yield it, and wait for a response
         connected_once = True
-        resp = yield RobotControlScreen(connection=connection_result[0])
+        resp = yield RobotControlScreen(connection_result[0])
         # The response will tell us how the control session died.
         # If it was a disconnection, we should try to reconnect.
         if resp:
@@ -76,15 +84,30 @@ def robot_control_wrapper(server_addr):
 
 class RobotControlScreen(screen.Screen):
     """Maintains a connection to the robot and sends it joystick positions."""
-    def __init__(self, connection=''):
+    def __init__(self, zmq_socket: zmq.Socket):
         super().__init__()
-        self.server = connection
+        self.socket = zmq_socket
         self.connection = None
         self.left_joystick_position = [0, 0]
         self.right_joystick_position = [0, 0]
         self.events_without_render = 0
         self.closing = False
-        
+        self.latest_video_frame = pygame.Surface((800, 600))
+        self.latest_video_frame.fill((255,0,255))
+        self.video_recv_thread = threading.Thread(target=self.video_recv_thread_worker, daemon=True)
+        self.video_recv_thread.start()
+
+    def video_recv_thread_worker(self):
+        while not self.closing:
+            print("Recving")
+            msg = self.socket.recv()
+            print("Recvd", len(msg))
+            npimg = np.fromstring(msg, dtype=np.uint8)
+            cv2img = cv2.imdecode(npimg, 1)
+            pygame_img = pygame.image.frombuffer(cv2img.tostring(), cv2img.shape[1::-1], "BGR")
+            self.latest_video_frame = pygame_img
+        # Finalize by closing the socket
+        self.socket.close()
 
 
     def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
@@ -118,6 +141,11 @@ class RobotControlScreen(screen.Screen):
 
         pygame.draw.circle(display, (0, 128, 255), left_joystick_pos.center, left_joystick_pos.width/2)
         pygame.draw.circle(display, 'red', right_joystick_pos.center, right_joystick_pos.width/2)
+
+        # In the middle of the screen, draw the frame
+        frame_rect = self.latest_video_frame.get_rect()
+        frame_rect.center = disp.center
+        display.blit(self.latest_video_frame, frame_rect)
 
         return ContinueExecution.value
 
