@@ -5,7 +5,7 @@ import pygame
 from .screens import *
 from .screen import *
 
-entrypoint = TextInputScreen("Type whatever", allow_cancelling=True)
+#entrypoint = TextInputScreen("Type whatever", allow_cancelling=True)
 #entrypoint = RobotControlScreen()
 #entrypoint = VerticalMenuScreen(list(enumerate(['This', 'That', 'The other thing'])), 0)
 
@@ -13,6 +13,7 @@ entrypoint = TextInputScreen("Type whatever", allow_cancelling=True)
 # for i in range(1000):
 #     l.append( [i, str(i)] )
 # entrypoint = VerticalMenuScreen(l)
+entrypoint = GeneratorScreen(main_menu())
 
 def run_render(screen_stack, display):
     global current_screen
@@ -32,7 +33,6 @@ def run_render(screen_stack, display):
             if screen_stack:
                 current_screen = screen_stack.pop()
                 current_screen.receive_data(old_screen, data)
-                current_screen.run_frame(display)
                 run_render(screen_stack, display)
             else:
                 print(f"Screen {old_screen} returned without a caller on the stack with data: {data}")
@@ -42,7 +42,7 @@ def run_render(screen_stack, display):
 
 
 
-async def main():
+def main():
     pygame.init()
     display = pygame.display.set_mode((1280, 800))
     if not pygame.display.is_fullscreen():
@@ -77,7 +77,7 @@ async def main():
 
 
 def run():
-    asyncio.run(main())
+    main()
 
 
 if __name__ == "__main__":

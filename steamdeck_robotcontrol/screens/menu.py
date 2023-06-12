@@ -18,7 +18,14 @@ class VerticalMenuScreen(screen.Screen):
         font = pygame.font.SysFont(pygame.font.get_default_font(), 36)
         self.vspace = 12
         self.text_lines = []
-        self.selected_item = default_item
+        self.selected_item = None
+        if default_item is not None:
+            for i, (key, _) in enumerate(self.items):
+                if default_item == key:
+                    self.selected_item = i
+                    break
+            else: # no break
+                raise ValueError(f"The default_argument must be the internal representation of one of the items: for example, default_item==items[0][0]; provided is: {default_item}")
         self.highlight_index = 0
         self.allow_cancelling = allow_cancelling
         for _, label in self.items:
@@ -37,7 +44,7 @@ class VerticalMenuScreen(screen.Screen):
     def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
         super().run_frame(display)
         if self.am_returning_now:
-            if self.selected_item:
+            if self.selected_item is not None:
                 return ReturnToCaller(self.items[self.selected_item][0])
             else:
                 return ReturnToCaller(None)
