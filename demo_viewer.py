@@ -1,11 +1,8 @@
 import cv2
-import zmq
 import numpy as np
+import websockets.sync.client
 
-context = zmq.Context()
-footage_socket = context.socket(zmq.SUB)
-footage_socket.connect('tcp://localhost:5555')
-footage_socket.setsockopt_string(zmq.SUBSCRIBE, '')
+footage_socket = websockets.sync.client.connect("ws://localhost:5555")
 
 while True:
     try:

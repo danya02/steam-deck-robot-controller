@@ -4,7 +4,8 @@ import cv2
 import numpy as np
 import pygame
 import threading
-import zmq
+import websockets.sync.client
+import websockets.exceptions
 
 from steamdeck_robotcontrol.screen import ContinueExecution, ReturnToCaller, ScreenRunResult
 from steamdeck_robotcontrol.screens.generator_screen import IGNORE_OPPORTUNITY, RENDERING_OPPORTUNITY, SUPPORTS_RENDERING, WANT_TO_RENDER
@@ -35,10 +36,7 @@ def robot_control_wrapper(server_addr):
         # Now I'm done rendering, and I'm going to start connecting.
         connection_result = [None]
         def connect():
-            ctx = zmq.Context.instance()
-            socket: zmq.Socket = ctx.socket(zmq.SUB)
-            socket.connect(f"tcp://{server_addr}")
-            socket.setsockopt_string(zmq.SUBSCRIBE, '')
+            socket = websockets.sync.client.connect(f"ws://{server_addr}")
 
             connection_result[0] = socket  # Instead of return, must use this
         connection_thread = threading.Thread(target=connect, daemon=True)
@@ -84,9 +82,9 @@ def robot_control_wrapper(server_addr):
 
 class RobotControlScreen(screen.Screen):
     """Maintains a connection to the robot and sends it joystick positions."""
-    def __init__(self, zmq_socket: zmq.Socket):
+    def __init__(self, websocket: websockets.sync.client.ClientConnection):
         super().__init__()
-        self.socket = zmq_socket
+        self.socket = websocket
         self.connection = None
         self.left_joystick_position = [0, 0]
         self.right_joystick_position = [0, 0]
@@ -100,7 +98,10 @@ class RobotControlScreen(screen.Screen):
     def video_recv_thread_worker(self):
         while not self.closing:
             print("Recving")
-            msg = self.socket.recv()
+            try:
+                msg = self.socket.recv()
+            except websockets.exceptions.ConnectionClosed:
+                self.closing = True
             print("Recvd", len(msg))
             npimg = np.fromstring(msg, dtype=np.uint8)
             cv2img = cv2.imdecode(npimg, 1)
