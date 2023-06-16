@@ -9,6 +9,17 @@ The following messages are defined:
 
 ## Client to server
 
+### Wheel pair setpoints
+
+This message sets the new values for the setpoints of the port and starboard wheel controller.
+This is an advanced method: for normal use, consider using one of the other methods for setting the desired position.
+
+The first byte is the ASCII letter `S`.
+After that, 4 instances of 2 bytes are sent:
+these are the new setpoints for the wheel controllers.
+The wheels are provided in the order: port front, starboard front, starboard back, port back.
+
+
 ## Server to client
 ### Video frame
 

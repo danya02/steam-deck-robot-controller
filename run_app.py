@@ -16,6 +16,7 @@ if __name__ == '__main__':
             if re.match('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', file):
                 xauthority_candidates.append(os.path.join(xauth_origin, file))
         # The old XAUTHORITY files are not cleaned up, so we need to find the latest one.
-        xauth = max(*xauthority_candidates, key=lambda x: os.stat(x).st_mtime)
+        print(xauthority_candidates)
+        xauth = max(xauthority_candidates, key=lambda x: os.stat(x).st_mtime)
         os.environ['XAUTHORITY'] = xauth
     run()

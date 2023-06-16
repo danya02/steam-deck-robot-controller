@@ -6,9 +6,24 @@ import struct
 
 camera = cv2.VideoCapture(0)  # init the camera
 
-def handler(socket):
+def handler(socket: websockets.sync.server.ServerConnection):
+    old_setpoints = None
     while True:
         try:
+            try:
+                while 1:  # loop until timeout error
+                    cmd = socket.recv(timeout=0)
+                    match cmd[0:1]:
+                        case b"S":
+                            setpoints = struct.unpack(">hhhh", cmd[1:])
+                            if setpoints != old_setpoints:
+                                old_setpoints = setpoints
+                                print("New setpoints:", setpoints)
+                        case what:
+                            print("Unknown command:", repr(what))
+            except TimeoutError:
+                pass
+
             grabbed, frame = camera.read()  # grab the current frame
             when = time.time()
             frame = cv2.resize(frame, (640, 480))  # resize the frame

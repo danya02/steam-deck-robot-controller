@@ -1,3 +1,4 @@
+import math
 import struct
 import time
 from typing import Any
@@ -135,8 +136,16 @@ class RobotControlScreen(screen.Screen):
         super().__init__()
         self.socket = websocket
         self.connection = None
+
         self.left_joystick_position = [0, 0]
         self.right_joystick_position = [0, 0]
+        self.port_wheel_pair_position = [0.0,0.0]
+        self.starboard_wheel_pair_position = [0.0,0.0]
+        
+        self.last_integration_time = time.perf_counter()
+        self.top_speed = 100
+
+
         self.events_without_render = 0
         self.closing = False
         self.closing_reason = None
@@ -153,25 +162,27 @@ class RobotControlScreen(screen.Screen):
         self.video_is_fullscreen = False
 
     def video_recv_thread_worker(self):
-        while not self.closing:
-            try:
-                msg = self.socket.recv()
-            except websockets.exceptions.ConnectionClosed:
-                self.closing = True
-                self.closing_reason = 'conn'
-            if msg[0] == ord('F'):  # video frame
-                when_captured, byte_size = struct.unpack_from(">dI", buffer=msg, offset=1)
-                npimg = np.frombuffer(msg[13:], dtype=np.uint8)
-                cv2img = cv2.imdecode(npimg, 1)
-                pygame_img = pygame.image.frombuffer(cv2img.tostring(), cv2img.shape[1::-1], "BGR")
-                self.latest_video_frame = pygame_img
-                self.latest_video_frame_latency = time.time() - when_captured
-                self.latest_video_frame_latencies.append(self.latest_video_frame_latency)
-                while len(self.latest_video_frame_latencies) > 1280:  # Horizontal chart can fit 1280 pixels
-                    self.latest_video_frame_latencies.pop(0)
-                self.latest_video_frame_presented = True
+        try:
+            while not self.closing:
+                try:
+                    msg = self.socket.recv()
+                except websockets.exceptions.ConnectionClosed:
+                    self.closing = True
+                    self.closing_reason = 'conn'
+                if msg[0] == ord('F'):  # video frame
+                    when_captured, byte_size = struct.unpack_from(">dI", buffer=msg, offset=1)
+                    npimg = np.frombuffer(msg[13:], dtype=np.uint8)
+                    cv2img = cv2.imdecode(npimg, 1)
+                    pygame_img = pygame.image.frombuffer(cv2img.tostring(), cv2img.shape[1::-1], "BGR")
+                    self.latest_video_frame = pygame_img
+                    self.latest_video_frame_latency = time.time() - when_captured
+                    self.latest_video_frame_latencies.append(self.latest_video_frame_latency)
+                    while len(self.latest_video_frame_latencies) > 1280:  # Horizontal chart can fit 1280 pixels
+                        self.latest_video_frame_latencies.pop(0)
+                    self.latest_video_frame_presented = True
+        finally:
         # Finalize by closing the socket
-        self.socket.close()
+            self.socket.close()
 
 
     def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
@@ -263,7 +274,45 @@ class RobotControlScreen(screen.Screen):
     def receive_data(self, returning_screen, returned_data: Any):
         return super().receive_data(returning_screen, returned_data)
 
+    @property
+    def port_wheel_pair_position_rounded(self):
+        return [round(self.port_wheel_pair_position[0]), round(self.port_wheel_pair_position[1])]
+    
+    @property
+    def starboard_wheel_pair_position_rounded(self):
+        return [round(self.starboard_wheel_pair_position[0]), round(self.starboard_wheel_pair_position[1])]
+    
+
     def should_render_frame(self) -> bool:
+        # Run integration for the two axes
+        deltaT = time.perf_counter() - self.last_integration_time
+
+        old_port_wheel = self.port_wheel_pair_position_rounded
+        old_starboard_wheel = self.starboard_wheel_pair_position_rounded
+
+        # Deadzone: if the joystick distance from the center is below a threshold,
+        # do not use it in integration
+        left_distance = math.sqrt(sum([i**2 for i in self.left_joystick_position]))
+        if left_distance >= 0.1:
+            self.port_wheel_pair_position[0] += self.left_joystick_position[0] * self.top_speed * deltaT
+            self.port_wheel_pair_position[1] += self.left_joystick_position[1] * self.top_speed * deltaT
+
+        right_distance = math.sqrt(sum([i**2 for i in self.right_joystick_position]))
+        if right_distance >= 0.1:
+            self.starboard_wheel_pair_position[0] += self.right_joystick_position[0] * self.top_speed * deltaT
+            self.starboard_wheel_pair_position[1] += self.right_joystick_position[1] * self.top_speed * deltaT
+
+        self.last_integration_time = time.perf_counter()
+        # Send the new value if the integration had exceeded a single point of difference.
+        if self.port_wheel_pair_position_rounded != old_port_wheel or self.starboard_wheel_pair_position_rounded != old_starboard_wheel:
+            cmd = bytearray(b"S")
+            pf, pb = self.port_wheel_pair_position_rounded
+            sf, sb = self.starboard_wheel_pair_position_rounded
+            cmd.extend(struct.pack(">hhhh", pf, sf, sb, pb))
+            self.socket.send(cmd)
+            print("Sent", self.port_wheel_pair_position_rounded, self.starboard_wheel_pair_position_rounded)
+
+
         return self.time_since_last_rendered > 1 or not self.latest_video_frame_presented
     
     
