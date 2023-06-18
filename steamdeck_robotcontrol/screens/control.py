@@ -16,6 +16,8 @@ from .. import screen
 
 def robot_control_wrapper(server_addr):
     """Generator-style wrapper responsible for (re)opening the connection."""
+    disconnection_reason = None
+
     # The first thing I'll receive is an indication of a rendering opportunity, and some events.
     yield SUPPORTS_RENDERING
     # Then, I'll send an ignored value, which would have been my first indication of what to do.
@@ -33,6 +35,10 @@ def robot_control_wrapper(server_addr):
         font = pygame.font.SysFont(pygame.font.get_default_font(), 48)
         text = font.render(f"{'Rec' if connected_once else 'C'}onnecting to {server_addr} (press B to give up)...", True, 'white')
         display.blit(text, (0,0))  # TODO: position
+        disconnect_text = pygame.Surface((1,1))
+        if disconnection_reason:
+            disconnect_text = font.render(f"Latest error: {disconnection_reason}", True, 'white')
+        display.blit(disconnect_text, (0, 50))
         last_rendered_at = time.perf_counter()
 
         # Now I'm done rendering, and I'm going to start connecting.
@@ -50,7 +56,7 @@ def robot_control_wrapper(server_addr):
         opportunity, events = yield ContinueExecution.value
 
         # Now comes an event loop
-        i = 100
+        i = 0
         while connection_thread.is_alive():
             for event in events:
                 if event.type == pygame.JOYBUTTONDOWN and event.button == 1:
@@ -62,8 +68,9 @@ def robot_control_wrapper(server_addr):
             if time.perf_counter() - last_rendered_at > 1:
                 display = yield WANT_TO_RENDER
                 display.fill('black')
-                display.blit(text, (i, 100))  # to see if it's working, we move the text
+                display.blit(text, (i, 0))  # to see if it's working, we move the text
                 i += 10
+                display.blit(disconnect_text, (i, 100))
                 last_rendered_at = time.perf_counter()
                 opportunity, events = yield ContinueExecution.value
             else:
@@ -122,11 +129,12 @@ def robot_control_wrapper(server_addr):
             connected_once = True
             reason = yield RobotControlScreen(connection_result[0])
             # The response will tell us how the control session died.
-            # If it was a disconnection, we should try to reconnect.
-            if reason == 'conn':
-                continue
-            else:
+            # If it was a manual exit, we should return, otherwise retry
+            if reason == 'user':
                 return None
+            else:
+                disconnection_reason = reason
+                continue
 
 
 
@@ -139,8 +147,8 @@ class RobotControlScreen(screen.Screen):
 
         self.left_joystick_position = [0, 0]
         self.right_joystick_position = [0, 0]
-        self.port_wheel_pair_position = [0.0,0.0]
-        self.starboard_wheel_pair_position = [0.0,0.0]
+        self.port_wheel_pair_desired_setpoint = [0.0,0.0]
+        self.starboard_wheel_pair_desired_setpoint = [0.0,0.0]
         
         self.last_integration_time = time.perf_counter()
         self.top_speed = 100
@@ -166,9 +174,9 @@ class RobotControlScreen(screen.Screen):
             while not self.closing:
                 try:
                     msg = self.socket.recv()
-                except websockets.exceptions.ConnectionClosed:
+                except websockets.exceptions.ConnectionClosed as e:
                     self.closing = True
-                    self.closing_reason = 'conn'
+                    self.closing_reason = str(e)
                 if msg[0] == ord('F'):  # video frame
                     when_captured, byte_size = struct.unpack_from(">dI", buffer=msg, offset=1)
                     npimg = np.frombuffer(msg[13:], dtype=np.uint8)
@@ -275,42 +283,50 @@ class RobotControlScreen(screen.Screen):
         return super().receive_data(returning_screen, returned_data)
 
     @property
-    def port_wheel_pair_position_rounded(self):
-        return [round(self.port_wheel_pair_position[0]), round(self.port_wheel_pair_position[1])]
+    def port_wheel_pair_desired_setpoint_rounded(self):
+        return [round(self.port_wheel_pair_desired_setpoint[0]), round(self.port_wheel_pair_desired_setpoint[1])]
     
     @property
-    def starboard_wheel_pair_position_rounded(self):
-        return [round(self.starboard_wheel_pair_position[0]), round(self.starboard_wheel_pair_position[1])]
+    def starboard_wheel_pair_desired_setpoint_rounded(self):
+        return [round(self.starboard_wheel_pair_desired_setpoint[0]), round(self.starboard_wheel_pair_desired_setpoint[1])]
     
 
     def should_render_frame(self) -> bool:
         # Run integration for the two axes
         deltaT = time.perf_counter() - self.last_integration_time
 
-        old_port_wheel = self.port_wheel_pair_position_rounded
-        old_starboard_wheel = self.starboard_wheel_pair_position_rounded
+        old_port_setpoints = self.port_wheel_pair_desired_setpoint_rounded
+        old_starboard_setpoints = self.starboard_wheel_pair_desired_setpoint_rounded
 
         # Deadzone: if the joystick distance from the center is below a threshold,
         # do not use it in integration
         left_distance = math.sqrt(sum([i**2 for i in self.left_joystick_position]))
         if left_distance >= 0.1:
-            self.port_wheel_pair_position[0] += self.left_joystick_position[0] * self.top_speed * deltaT
-            self.port_wheel_pair_position[1] += self.left_joystick_position[1] * self.top_speed * deltaT
+            # Port wheel pair desired setpoint = [forward, left]
+            # left joystick position = [right, down]
+            # therefore, need to swap them and negate both
+            self.port_wheel_pair_desired_setpoint[0] -= self.left_joystick_position[1] * self.top_speed * deltaT
+            self.port_wheel_pair_desired_setpoint[1] -= self.left_joystick_position[0] * self.top_speed * deltaT
 
         right_distance = math.sqrt(sum([i**2 for i in self.right_joystick_position]))
         if right_distance >= 0.1:
-            self.starboard_wheel_pair_position[0] += self.right_joystick_position[0] * self.top_speed * deltaT
-            self.starboard_wheel_pair_position[1] += self.right_joystick_position[1] * self.top_speed * deltaT
+            # Starboard wheel pair desired setpoint = [forward, right]
+            # right joystick position = [right, down]
+            # therefore, need to swap them and negate vertical
+            self.starboard_wheel_pair_desired_setpoint[0] -= self.right_joystick_position[1] * self.top_speed * deltaT
+            self.starboard_wheel_pair_desired_setpoint[1] += self.right_joystick_position[0] * self.top_speed * deltaT
 
         self.last_integration_time = time.perf_counter()
         # Send the new value if the integration had exceeded a single point of difference.
-        if self.port_wheel_pair_position_rounded != old_port_wheel or self.starboard_wheel_pair_position_rounded != old_starboard_wheel:
-            cmd = bytearray(b"S")
-            pf, pb = self.port_wheel_pair_position_rounded
-            sf, sb = self.starboard_wheel_pair_position_rounded
-            cmd.extend(struct.pack(">hhhh", pf, sf, sb, pb))
+        if self.port_wheel_pair_desired_setpoint_rounded != old_port_setpoints or self.starboard_wheel_pair_desired_setpoint_rounded != old_starboard_setpoints:
+            cmd = bytearray(b"T")
+            # Port forward, port left
+            pf, pl = self.port_wheel_pair_desired_setpoint_rounded
+            # Starboard forward, starboard right
+            sf, sr = self.starboard_wheel_pair_desired_setpoint_rounded
+            cmd.extend(struct.pack(">hhhh", pf, pl, sf, sr))
             self.socket.send(cmd)
-            print("Sent", self.port_wheel_pair_position_rounded, self.starboard_wheel_pair_position_rounded)
+            print("Sent", self.port_wheel_pair_desired_setpoint_rounded, self.starboard_wheel_pair_desired_setpoint_rounded)
 
 
         return self.time_since_last_rendered > 1 or not self.latest_video_frame_presented
@@ -324,6 +340,9 @@ class RobotControlScreen(screen.Screen):
             elif event.button == 6:  # Left menu button / start button
                 self.closing = True
                 self.closing_reason = 'user'
+            elif event.button in [9, 10]:  # Left and right joystick press
+                # Send emergency stop
+                self.socket.send(b"!")
         elif event.type == pygame.JOYBUTTONUP:
             if event.button == 5:
                 self.video_is_fullscreen = False

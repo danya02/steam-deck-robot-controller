@@ -13,3 +13,6 @@ upload-source:
 
 play-remote:
 	ssh deck@steamdeck.local -t "bash -c \"cd /home/deck/devkit-game/RobotControl; DISPLAY=:0 python ./run_app.py -- devel\""
+
+server:
+	python3 demo_server.py
