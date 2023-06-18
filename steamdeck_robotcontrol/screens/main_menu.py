@@ -58,7 +58,7 @@ def server_submenu(db, server_idx):
                     server['address'] = new_addr
                     servers = db['servers']
                     servers[server_idx] = server
-                    db['servers'][server_idx] = server
+                    db['servers'] = servers
             case 'delete':
                 resp = yield VerticalMenuScreen([(1, f'Really delete the server {server["name"]}'), (0, 'Do not')], default_item=0, allow_cancelling=True)
                 if resp:

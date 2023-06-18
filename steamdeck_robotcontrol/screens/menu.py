@@ -75,7 +75,7 @@ class VerticalMenuScreen(screen.Screen):
             rect.centery -= y_error
 
         # Now shift it so that the selected item (if there is one) is at the center of the screen
-        if self.selected_item:
+        if self.selected_item is not None:
             highlighted_item = label_rects[self.selected_item]
             y_error = highlighted_item.centery - disp.centery
             for rect in label_rects:
