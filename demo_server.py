@@ -9,9 +9,45 @@ camera = cv2.VideoCapture(0)  # init the camera
 conn_lock = threading.Lock()
 emergency_stop_when_started = 0.0
 
+import serial
+p = serial.Serial('/dev/ttyACM0', 115200)
+
+def wheel_controller_read():
+    while 1:
+        print(p.readline())
+
+threading.Thread(target=wheel_controller_read, daemon=True).start()
+
+current_setpoints = [0,0,0,0]
+
+def write_setpoints(sp):
+  #print("Writing", current_setpoints)
+  last_setpoints = current_setpoints
+  spf, ssf, ssb, spb = current_setpoints
+  #print(f'pf{spf} sf{ssf} sb{ssb} pb{spb}\r\n')
+  p.write(f'pf{spf} sf{ssf} sb{ssb} pb{spb}\r\n'.encode())
+  #p.write('?\r\n'.encode())
+  p.flush()
+
+def write_thread():
+    last_setpoints = None
+    p.write(b'\x03')
+    p.write('\r\n'.encode())
+    p.write(b'\x04')
+    p.write('\r\n'.encode())
+    p.flush()
+    while 1:
+      write_setpoints(current_setpoints)
+      time.sleep(0.01)
+
+
+#threading.Thread(target=write_thread, daemon=True).start()
+
+INPUT_SCALE = 10
 
 def handler(socket: websockets.sync.server.ServerConnection):
     global emergency_stop_when_started
+    global current_setpoints
     if conn_lock.locked():
         socket.close(code=1008,  # closing due to message that violates policy
                      reason="Another client is connected")
@@ -22,32 +58,29 @@ def handler(socket: websockets.sync.server.ServerConnection):
             try:
                 while 1:  # loop until timeout error
                     cmd = socket.recv(timeout=0)
-                    match cmd[0:1]:
-                        case b"S":
+                    if cmd[0:1] == b"S":
                             if time.time() - emergency_stop_when_started < 2:
                                 print("Ignoring setpoint command due to emergency stop")
                                 break
                             setpoints = list(struct.unpack(">hhhh", cmd[1:]))
                             if setpoints != old_setpoints:
                                 old_setpoints = setpoints
-                                print("New setpoints:", setpoints)
-                        case b"T":
+                                #print("New setpoints:", setpoints)
+                    if cmd[0:1] == b"T":
                             if time.time() - emergency_stop_when_started < 2:
                                 print("Ignoring setpoint command due to emergency stop")
                                 break
                             # Offsets: port to forward, port to left, starboard to forward, starboard to right
                             opf,opl,osf,osr = struct.unpack(">hhhh", cmd[1:])
-                            print("Offsets:")
-                            print("Port to forward:", opf)
-                            print("Port to left:", opl)
-                            print("Starboard to forward:", osf)
-                            print("Starboard to right:", osr)
+                            #print("Offsets:")
+                            #print("Port to forward:", opf)
+                            #print("Port to left:", opl)
+                            #print("Starboard to forward:", osf)
+                            #print("Starboard to right:", osr)
                             
                             # Need to transform the coordinates from pair offsets into setpoints.
-                            spf = 0
-                            spb = 0
-                            ssf = 0
-                            ssb = 0
+                            #spf, ssf, ssb, spb = current_setpoints
+                            spf, ssf, ssb, spb = 0,0,0,0
 
                             # Forward-back motion: add this component to both wheels on side
                             spf += opf
@@ -60,22 +93,28 @@ def handler(socket: websockets.sync.server.ServerConnection):
 
                             spf += opl
                             spb -= opl
-
                             ssf += osr
                             ssb -= osr
 
                             # port front, starboard front, starboard back, port back
                             setpoints = [spf, ssf, ssb, spb]
+
+                            for i in range(len(setpoints)):
+                                setpoints[i] *= INPUT_SCALE
+
                             if setpoints != old_setpoints:
                                 old_setpoints = setpoints
-                                print("New setpoints:", setpoints)
-                        case b"!":
+                                current_setpoints = setpoints
+                                write_setpoints(setpoints)
+
+                    elif cmd[0:1] == b"!":
                             # Emergency stop:
                             emergency_stop_when_started = time.time()
                             # TODO: set setpoints to wheel positions
+                            # TODO: send `!` command to the Pico
 
-                        case what:
-                            print("Unknown command:", repr(what))
+                    else:
+                            print("Unknown command:", repr(cmd))
             except TimeoutError:
                 pass
 
