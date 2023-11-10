@@ -9,8 +9,17 @@ import threading
 import websockets.sync.client
 import websockets.exceptions
 
-from steamdeck_robotcontrol.screen import ContinueExecution, ReturnToCaller, ScreenRunResult
-from steamdeck_robotcontrol.screens.generator_screen import IGNORE_OPPORTUNITY, RENDERING_OPPORTUNITY, SUPPORTS_RENDERING, WANT_TO_RENDER
+from steamdeck_robotcontrol.screen import (
+    ContinueExecution,
+    ReturnToCaller,
+    ScreenRunResult,
+)
+from steamdeck_robotcontrol.screens.generator_screen import (
+    IGNORE_OPPORTUNITY,
+    RENDERING_OPPORTUNITY,
+    SUPPORTS_RENDERING,
+    WANT_TO_RENDER,
+)
 from .. import screen
 
 
@@ -31,24 +40,32 @@ def robot_control_wrapper(server_addr):
         display = yield WANT_TO_RENDER
 
         # I will render the "Connecting" text to the screen.
-        display.fill('black')
+        display.fill("black")
         font = pygame.font.SysFont(pygame.font.get_default_font(), 48)
-        text = font.render(f"{'Rec' if connected_once else 'C'}onnecting to {server_addr} (press B to give up)...", True, 'white')
-        display.blit(text, (0,0))  # TODO: position
-        disconnect_text = pygame.Surface((1,1))
+        text = font.render(
+            f"{'Rec' if connected_once else 'C'}onnecting to {server_addr} (press B to give up)...",
+            True,
+            "white",
+        )
+        display.blit(text, (0, 0))  # TODO: position
+        disconnect_text = pygame.Surface((1, 1))
         if disconnection_reason:
-            disconnect_text = font.render(f"Latest error: {disconnection_reason}", True, 'white')
+            disconnect_text = font.render(
+                f"Latest error: {disconnection_reason}", True, "white"
+            )
         display.blit(disconnect_text, (0, 50))
         last_rendered_at = time.perf_counter()
 
         # Now I'm done rendering, and I'm going to start connecting.
         connection_result = [None, None]
+
         def connect():
             try:
                 socket = websockets.sync.client.connect(f"ws://{server_addr}")
                 connection_result[0] = socket  # Instead of return, must use this
             except Exception as e:
                 connection_result[1] = e
+
         connection_thread = threading.Thread(target=connect, daemon=True)
         connection_thread.start()
 
@@ -67,7 +84,7 @@ def robot_control_wrapper(server_addr):
             # I'll render if it's more than 1 second since I did last time.
             if time.perf_counter() - last_rendered_at > 1:
                 display = yield WANT_TO_RENDER
-                display.fill('black')
+                display.fill("black")
                 display.blit(text, (i, 0))  # to see if it's working, we move the text
                 i += 10
                 display.blit(disconnect_text, (i, 100))
@@ -82,19 +99,23 @@ def robot_control_wrapper(server_addr):
         if connection_result[1]:
             # This is something to render
             display = yield WANT_TO_RENDER
-            display.fill('black')
+            display.fill("black")
             errors = []
-            errors.append( font.render(f"Error while connecting to {server_addr}:", True, 'white') )
-            errors.append( font.render(repr(connection_result[1]), True, 'white') )
-            errors.append( font.render("Press A to retry or B to give up", True, 'white') )
-            rect = pygame.Rect(0,0,0,0)
+            errors.append(
+                font.render(f"Error while connecting to {server_addr}:", True, "white")
+            )
+            errors.append(font.render(repr(connection_result[1]), True, "white"))
+            errors.append(
+                font.render("Press A to retry or B to give up", True, "white")
+            )
+            rect = pygame.Rect(0, 0, 0, 0)
             for error in errors:
                 error_rect = error.get_rect()
                 error_rect.top = rect.bottom
                 error_rect.left = rect.left
                 display.blit(error, error_rect)
                 rect = error_rect
-            
+
             # Now sit in a loop, accepting events until either button is pressed.
             opportunity, events = yield ContinueExecution.value
             last_rendered_at = time.perf_counter()
@@ -103,9 +124,11 @@ def robot_control_wrapper(server_addr):
             while not what_to_do:
                 for e in events:
                     if e.type == pygame.JOYBUTTONDOWN:
-                        if e.button == 0: what_to_do = 'retry'
-                        elif e.button == 1: what_to_do = 'abort'
-                
+                        if e.button == 0:
+                            what_to_do = "retry"
+                        elif e.button == 1:
+                            what_to_do = "abort"
+
                 # Occasionally we need to take the render opportunity, but not render anything new.
                 # This is so that the display keeps up to date.
                 if time.perf_counter() - last_rendered_at > 1:
@@ -116,12 +139,11 @@ def robot_control_wrapper(server_addr):
 
             # We need to acquire some new events now, after the event with the button press.
             opportunity, events = yield IGNORE_OPPORTUNITY
-            if what_to_do == 'retry':
+            if what_to_do == "retry":
                 what_to_do = None  # idk how exactly, but this does not get reset at the start of the loop
                 # Continue to the start of the loop implicitly
-            else: return None
-
-
+            else:
+                return None
 
         else:
             # With the connection established, we can make a RobotControlScreen out of it
@@ -130,16 +152,19 @@ def robot_control_wrapper(server_addr):
             reason = yield RobotControlScreen(connection_result[0])
             # The response will tell us how the control session died.
             # If it was a manual exit, we should return, otherwise retry
-            if reason == 'user':
+            if reason == "user":
                 return None
             else:
                 disconnection_reason = reason
                 continue
 
 
+SEND_INTERVAL = 0.1
+
 
 class RobotControlScreen(screen.Screen):
     """Maintains a connection to the robot and sends it joystick positions."""
+
     def __init__(self, websocket: websockets.sync.client.ClientConnection):
         super().__init__()
         self.socket = websocket
@@ -147,12 +172,11 @@ class RobotControlScreen(screen.Screen):
 
         self.left_joystick_position = [0, 0]
         self.right_joystick_position = [0, 0]
-        self.port_wheel_pair_desired_setpoint = [0.0,0.0]
-        self.starboard_wheel_pair_desired_setpoint = [0.0,0.0]
-        
+        self.port_wheel_pair_desired_setpoint = [0.0, 0.0]
+        self.starboard_wheel_pair_desired_setpoint = [0.0, 0.0]
+
         self.last_integration_time = time.perf_counter()
         self.top_speed = 100
-
 
         self.events_without_render = 0
         self.closing = False
@@ -160,42 +184,54 @@ class RobotControlScreen(screen.Screen):
 
         self.latest_video_frame = pygame.Surface((800, 600))
         self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
-        self.latest_video_frame.fill((255,0,255))
+        self.latest_video_frame.fill((255, 0, 255))
         self.latest_video_frame_latency = 0.0
         self.latest_video_frame_presented = False
         self.latest_video_frame_latencies = [0]
-        self.video_recv_thread = threading.Thread(target=self.video_recv_thread_worker, daemon=True)
+        self.video_recv_thread = threading.Thread(
+            target=self.video_recv_thread_worker, daemon=True
+        )
         self.video_recv_thread.start()
 
         self.video_is_fullscreen = False
+        self.last_send_time = time.time()
 
     def video_recv_thread_worker(self):
         try:
             while not self.closing:
+                msg = []
                 try:
                     msg = self.socket.recv()
                 except websockets.exceptions.ConnectionClosed as e:
                     self.closing = True
                     self.closing_reason = str(e)
-                if msg[0] == ord('F'):  # video frame
-                    when_captured, byte_size = struct.unpack_from(">dI", buffer=msg, offset=1)
+                    break
+                if msg and msg[0] == ord("F"):  # video frame
+                    when_captured, byte_size = struct.unpack_from(
+                        ">dI", buffer=msg, offset=1
+                    )
                     npimg = np.frombuffer(msg[13:], dtype=np.uint8)
                     cv2img = cv2.imdecode(npimg, 1)
-                    pygame_img = pygame.image.frombuffer(cv2img.tostring(), cv2img.shape[1::-1], "BGR")
+                    pygame_img = pygame.image.frombuffer(
+                        cv2img.tostring(), cv2img.shape[1::-1], "BGR"
+                    )
                     self.latest_video_frame = pygame_img
                     self.latest_video_frame_latency = time.time() - when_captured
-                    self.latest_video_frame_latencies.append(self.latest_video_frame_latency)
-                    while len(self.latest_video_frame_latencies) > 1280:  # Horizontal chart can fit 1280 pixels
+                    self.latest_video_frame_latencies.append(
+                        self.latest_video_frame_latency
+                    )
+                    while (
+                        len(self.latest_video_frame_latencies) > 1280
+                    ):  # Horizontal chart can fit 1280 pixels
                         self.latest_video_frame_latencies.pop(0)
                     self.latest_video_frame_presented = True
         finally:
-        # Finalize by closing the socket
+            # Finalize by closing the socket
             self.socket.close()
-
 
     def run_frame(self, display: pygame.Surface) -> ScreenRunResult:
         super().run_frame(display)
-        display.fill('black')
+        display.fill("black")
         if self.closing:
             return ReturnToCaller(self.closing_reason)
 
@@ -210,31 +246,81 @@ class RobotControlScreen(screen.Screen):
             display.blit(img, img_rect)
             return ContinueExecution.value
 
-
         left_joystick_circle = pygame.Rect(0, 0, 100, 100)
         left_joystick_circle.centery = disp.centery
         left_joystick_circle.left = disp.left + 25
-        pygame.draw.circle(display, 'white', left_joystick_circle.center, left_joystick_circle.width/2, 4)
-        pygame.draw.line(display, 'white', (left_joystick_circle.centerx, left_joystick_circle.top), (left_joystick_circle.centerx, left_joystick_circle.bottom), 2)
-        pygame.draw.line(display, 'white', (left_joystick_circle.left, left_joystick_circle.centery), (left_joystick_circle.right, left_joystick_circle.centery), 2)
-        
+        pygame.draw.circle(
+            display,
+            "white",
+            left_joystick_circle.center,
+            left_joystick_circle.width / 2,
+            4,
+        )
+        pygame.draw.line(
+            display,
+            "white",
+            (left_joystick_circle.centerx, left_joystick_circle.top),
+            (left_joystick_circle.centerx, left_joystick_circle.bottom),
+            2,
+        )
+        pygame.draw.line(
+            display,
+            "white",
+            (left_joystick_circle.left, left_joystick_circle.centery),
+            (left_joystick_circle.right, left_joystick_circle.centery),
+            2,
+        )
+
         right_joystick_circle = left_joystick_circle.copy()
         right_joystick_circle.right = disp.right - 25
-        pygame.draw.circle(display, 'white', right_joystick_circle.center, right_joystick_circle.width/2, 4)
-        pygame.draw.line(display, 'white', (right_joystick_circle.centerx, right_joystick_circle.top), (right_joystick_circle.centerx, right_joystick_circle.bottom), 2)
-        pygame.draw.line(display, 'white', (right_joystick_circle.left, right_joystick_circle.centery), (right_joystick_circle.right, right_joystick_circle.centery), 2)
+        pygame.draw.circle(
+            display,
+            "white",
+            right_joystick_circle.center,
+            right_joystick_circle.width / 2,
+            4,
+        )
+        pygame.draw.line(
+            display,
+            "white",
+            (right_joystick_circle.centerx, right_joystick_circle.top),
+            (right_joystick_circle.centerx, right_joystick_circle.bottom),
+            2,
+        )
+        pygame.draw.line(
+            display,
+            "white",
+            (right_joystick_circle.left, right_joystick_circle.centery),
+            (right_joystick_circle.right, right_joystick_circle.centery),
+            2,
+        )
 
         # Draw joystick positions
-        left_joystick_pos = pygame.Rect(0,0,25,25)
-        left_joystick_pos.centerx = left_joystick_circle.centerx + (self.left_joystick_position[0] * left_joystick_circle.width / 2)
-        left_joystick_pos.centery = left_joystick_circle.centery + (self.left_joystick_position[1] * left_joystick_circle.height / 2)
+        left_joystick_pos = pygame.Rect(0, 0, 25, 25)
+        left_joystick_pos.centerx = left_joystick_circle.centerx + (
+            self.left_joystick_position[0] * left_joystick_circle.width / 2
+        )
+        left_joystick_pos.centery = left_joystick_circle.centery + (
+            self.left_joystick_position[1] * left_joystick_circle.height / 2
+        )
 
         right_joystick_pos = left_joystick_pos.copy()
-        right_joystick_pos.centerx = right_joystick_circle.centerx + (self.right_joystick_position[0] * right_joystick_circle.width / 2)
-        right_joystick_pos.centery = right_joystick_circle.centery + (self.right_joystick_position[1] * right_joystick_circle.height / 2)
+        right_joystick_pos.centerx = right_joystick_circle.centerx + (
+            self.right_joystick_position[0] * right_joystick_circle.width / 2
+        )
+        right_joystick_pos.centery = right_joystick_circle.centery + (
+            self.right_joystick_position[1] * right_joystick_circle.height / 2
+        )
 
-        pygame.draw.circle(display, (0, 128, 255), left_joystick_pos.center, left_joystick_pos.width/2)
-        pygame.draw.circle(display, 'red', right_joystick_pos.center, right_joystick_pos.width/2)
+        pygame.draw.circle(
+            display,
+            (0, 128, 255),
+            left_joystick_pos.center,
+            left_joystick_pos.width / 2,
+        )
+        pygame.draw.circle(
+            display, "red", right_joystick_pos.center, right_joystick_pos.width / 2
+        )
 
         # In the middle of the screen, draw the frame
         frame_rect = self.latest_video_frame.get_rect()
@@ -243,7 +329,11 @@ class RobotControlScreen(screen.Screen):
         self.latest_video_frame_presented = True
 
         # In a corner of the screen, draw the delay between now and the latest frame
-        delay_text = self.font.render(f"Frame recv: {round(1000*self.latest_video_frame_latency, 2)} ms ago", True, 'white')
+        delay_text = self.font.render(
+            f"Frame recv: {round(1000*self.latest_video_frame_latency, 2)} ms ago",
+            True,
+            "white",
+        )
         delay_rect = delay_text.get_rect()
         display.blit(delay_text, delay_rect)
 
@@ -261,21 +351,30 @@ class RobotControlScreen(screen.Screen):
             if height_frac < 0.5:
                 color = (int(255 * height_frac), 255, 0)
             else:
-                color = (255, int(255 * (1-height_frac)), 0)
-            #display.set_at((idx, screen_position), color)
-            pygame.draw.line(display, color, (idx, chart_rect.bottom), (idx, screen_position)) 
+                color = (255, int(255 * (1 - height_frac)), 0)
+            # display.set_at((idx, screen_position), color)
+            pygame.draw.line(
+                display, color, (idx, chart_rect.bottom), (idx, screen_position)
+            )
         # Then, draw lines and their labels
         for line in range(lines):
-            screen_position = chart_rect.bottom - int((chart_rect.bottom - chart_rect.top) * line / lines)
-            pygame.draw.line(display, 'grey', (chart_rect.left, screen_position), (chart_rect.right, screen_position), 2)
+            screen_position = chart_rect.bottom - int(
+                (chart_rect.bottom - chart_rect.top) * line / lines
+            )
+            pygame.draw.line(
+                display,
+                "grey",
+                (chart_rect.left, screen_position),
+                (chart_rect.right, screen_position),
+                2,
+            )
             value = min_value + (max_value - min_value) * line / lines
-            value = str(round(value * 1000, 2)) + 'ms'
-            label = self.font.render(value, True, 'grey')
+            value = str(round(value * 1000, 2)) + "ms"
+            label = self.font.render(value, True, "grey")
             label_rect = label.get_rect()
             label_rect.bottom = screen_position
             label_rect.right = disp.right
             display.blit(label, label_rect)
-
 
         return ContinueExecution.value
 
@@ -284,12 +383,17 @@ class RobotControlScreen(screen.Screen):
 
     @property
     def port_wheel_pair_desired_setpoint_rounded(self):
-        return [round(self.port_wheel_pair_desired_setpoint[0]), round(self.port_wheel_pair_desired_setpoint[1])]
-    
+        return [
+            round(self.port_wheel_pair_desired_setpoint[0]),
+            round(self.port_wheel_pair_desired_setpoint[1]),
+        ]
+
     @property
     def starboard_wheel_pair_desired_setpoint_rounded(self):
-        return [round(self.starboard_wheel_pair_desired_setpoint[0]), round(self.starboard_wheel_pair_desired_setpoint[1])]
-    
+        return [
+            round(self.starboard_wheel_pair_desired_setpoint[0]),
+            round(self.starboard_wheel_pair_desired_setpoint[1]),
+        ]
 
     def should_render_frame(self) -> bool:
         # Run integration for the two axes
@@ -305,20 +409,34 @@ class RobotControlScreen(screen.Screen):
             # Port wheel pair desired setpoint = [forward, left]
             # left joystick position = [right, down]
             # therefore, need to swap them and negate both
-            self.port_wheel_pair_desired_setpoint[0] -= self.left_joystick_position[1] * self.top_speed * deltaT
-            self.port_wheel_pair_desired_setpoint[1] -= self.left_joystick_position[0] * self.top_speed * deltaT
+            self.port_wheel_pair_desired_setpoint[0] -= (
+                self.left_joystick_position[1] * self.top_speed * deltaT
+            )
+            self.port_wheel_pair_desired_setpoint[1] -= (
+                self.left_joystick_position[0] * self.top_speed * deltaT
+            )
 
         right_distance = math.sqrt(sum([i**2 for i in self.right_joystick_position]))
         if right_distance >= 0.1:
             # Starboard wheel pair desired setpoint = [forward, right]
             # right joystick position = [right, down]
             # therefore, need to swap them and negate vertical
-            self.starboard_wheel_pair_desired_setpoint[0] -= self.right_joystick_position[1] * self.top_speed * deltaT
-            self.starboard_wheel_pair_desired_setpoint[1] += self.right_joystick_position[0] * self.top_speed * deltaT
+            self.starboard_wheel_pair_desired_setpoint[0] -= (
+                self.right_joystick_position[1] * self.top_speed * deltaT
+            )
+            self.starboard_wheel_pair_desired_setpoint[1] += (
+                self.right_joystick_position[0] * self.top_speed * deltaT
+            )
 
         self.last_integration_time = time.perf_counter()
+        curr_time = time.time()
         # Send the new value if the integration had exceeded a single point of difference.
-        if self.port_wheel_pair_desired_setpoint_rounded != old_port_setpoints or self.starboard_wheel_pair_desired_setpoint_rounded != old_starboard_setpoints:
+        if (
+            self.port_wheel_pair_desired_setpoint_rounded != old_port_setpoints
+            or self.starboard_wheel_pair_desired_setpoint_rounded
+            != old_starboard_setpoints
+        ) and curr_time - self.last_send_time > 0.1:
+            self.last_send_time = curr_time
             cmd = bytearray(b"T")
             # Port forward, port left
             pf, pl = self.port_wheel_pair_desired_setpoint_rounded
@@ -326,12 +444,16 @@ class RobotControlScreen(screen.Screen):
             sf, sr = self.starboard_wheel_pair_desired_setpoint_rounded
             cmd.extend(struct.pack(">hhhh", pf, pl, sf, sr))
             self.socket.send(cmd)
-            print("Sent", self.port_wheel_pair_desired_setpoint_rounded, self.starboard_wheel_pair_desired_setpoint_rounded)
+            print(
+                "Sent",
+                self.port_wheel_pair_desired_setpoint_rounded,
+                self.starboard_wheel_pair_desired_setpoint_rounded,
+            )
 
+        return (
+            self.time_since_last_rendered > 1 or not self.latest_video_frame_presented
+        )
 
-        return self.time_since_last_rendered > 1 or not self.latest_video_frame_presented
-    
-    
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.JOYBUTTONDOWN:
             print(event.button)
@@ -339,7 +461,7 @@ class RobotControlScreen(screen.Screen):
                 self.video_is_fullscreen = True
             elif event.button == 6:  # Left menu button / start button
                 self.closing = True
-                self.closing_reason = 'user'
+                self.closing_reason = "user"
             elif event.button in [9, 10]:  # Left and right joystick press
                 # Send emergency stop
                 self.socket.send(b"!")
@@ -358,10 +480,9 @@ class RobotControlScreen(screen.Screen):
                     self.right_joystick_position[1] = event.value
                 case _:
                     return False
-        #print(self.left_joystick_position, self.right_joystick_position)
+        # print(self.left_joystick_position, self.right_joystick_position)
         self.events_without_render += 1
         if self.events_without_render > 10:
             self.events_without_render = 0
             return True
         return False
-
