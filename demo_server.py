@@ -1,4 +1,4 @@
-import cv2
+#import cv2
 import websockets.sync.server
 import time
 import struct
@@ -8,17 +8,18 @@ import threading
 import serial
 p = serial.Serial('/dev/ttyACM0', 115200)
 
-camera = cv2.VideoCapture(0)  # init the camera
-conn_lock = threading.Lock()
+#camera = cv2.VideoCapture(0)  # init the camera
+#conn_lock = threading.Lock()
 emergency_stop_when_started = 0.0
 
-INPUT_SCALE = 10
-MIN_SIDE_VAL = 50
+INPUT_SCALE = 100
+MIN_SIDE_VAL = 500
 
 
 def wheel_controller_read():
     while 1:
-        print(p.readline())
+        #print(p.readline())
+        aabcd = 1
 
 threading.Thread(target=wheel_controller_read, daemon=True).start()
 
@@ -28,9 +29,9 @@ def write_setpoints(sp):
   #print("Writing", current_setpoints)
   last_setpoints = current_setpoints
   spf, ssf, ssb, spb = current_setpoints
-  #print(f'pf{spf} sf{ssf} sb{ssb} pb{spb}\r\n')
+  print(f'pf{spf} sf{ssf} sb{ssb} pb{spb}\r\n')
   p.write(f'pf{spf} sf{ssf} sb{ssb} pb{spb}\r\n'.encode())
-  #p.write('?\r\n'.encode())
+  p.write('?\r\n'.encode())
   p.flush()
 
 p.write(b'\x03')
@@ -45,6 +46,7 @@ def write_thread():
     p.write('\r\n'.encode())
     p.write(b'\x04')
     p.write('\r\n'.encode())
+    p.write('=30,10,0.00001')
     p.flush()
     while 1:
       write_setpoints(current_setpoints)
@@ -63,10 +65,10 @@ threading.Thread(target=report_loop, daemon=True).start()
 def handler(socket: websockets.sync.server.ServerConnection):
     global emergency_stop_when_started
     global current_setpoints
-    if conn_lock.locked():
-        socket.close(code=1008,  # closing due to message that violates policy
-                     reason="Another client is connected")
-    conn_lock.acquire()
+#    if conn_lock.locked():
+#        socket.close(code=1008,  # closing due to message that violates policy
+#                     reason="Another client is connected")
+#    conn_lock.acquire()
     old_setpoints = None
     try:
         while True:
@@ -80,13 +82,14 @@ def handler(socket: websockets.sync.server.ServerConnection):
                             setpoints = list(struct.unpack(">hhhh", cmd[1:]))
                             if setpoints != old_setpoints:
                                 old_setpoints = setpoints
-                                #print("New setpoints:", setpoints)
+                                print("New setpoints:", setpoints)
                     if cmd[0:1] == b"T":
                             if time.time() - emergency_stop_when_started < 2:
                                 print("Ignoring setpoint command due to emergency stop")
                                 break
                             # Offsets: port to forward, port to left, starboard to forward, starboard to right
                             opf,opl,osf,osr = struct.unpack(">hhhh", cmd[1:])
+                            #print("---------------------------------------------")
                             #print("Offsets:")
                             #print("Port to forward:", opf)
                             #print("Port to left:", opl)
@@ -126,6 +129,8 @@ def handler(socket: websockets.sync.server.ServerConnection):
                             # Emergency stop:
                             emergency_stop_when_started = time.time()
                             # TODO: set setpoints to wheel positions
+                            spf = spb = ssf = ssb = 0
+                            setpoints = [0,0,0,0]
                             p.write(b'!\r\n')
                             p.flush()
 
@@ -133,21 +138,22 @@ def handler(socket: websockets.sync.server.ServerConnection):
                             print("Unknown command:", repr(cmd))
             except TimeoutError:
                 pass
-            try:
-              grabbed, frame = camera.read()  # grab the current frame
-              when = time.time()
-              frame = cv2.resize(frame, (640, 480))  # resize the frame
-              encoded, buffer = cv2.imencode('.jpg', frame)
-              to_send = bytearray(b'F????????????')
-              when_size_enc = struct.pack_into(">dI", to_send, 1, when, len(buffer))
-              to_send.extend(buffer)
-              socket.send(to_send)
-            except: pass
+            #try:
+            #  grabbed, frame = camera.read()  # grab the current frame
+            #  when = time.time()
+            #  frame = cv2.resize(frame, (640, 480))  # resize the frame
+            #  encoded, buffer = cv2.imencode('.jpg', frame)
+            #  to_send = bytearray(b'F????????????')
+            #  when_size_enc = struct.pack_into(">dI", to_send, 1, when, len(buffer))
+            #  to_send.extend(buffer)
+            #  socket.send(to_send)
+            #except: pass
 
 
     except KeyboardInterrupt:
-        camera.release()
-        cv2.destroyAllWindows()
+        pass
+#        camera.release()
+#        cv2.destroyAllWindows()
     finally:
         conn_lock.release()
         p.write(b'\x03')
